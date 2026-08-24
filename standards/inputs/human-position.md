@@ -22,6 +22,7 @@ the interrogation has something concrete to push against.
 | Item | Confidence | Lands as |
 |---|---|---|
 | Result pattern. Do not raise exceptions where the result can be handled and tracked and it is not a show-stopper | `[position]` | ADR 0009 |
+| **No reflection anywhere without strong rationale** | `[decided]` | cross-cutting; constrains ADR 0009 and A8 |
 | FluentValidation for validation | `[position]` | ADR 0012 |
 | Minimal API | `[position]` | conventions I1 |
 | **No SDK interfaces or types anywhere outside Infrastructure.** They live in Infrastructure only, behind our own interface | `[position]` | new ADR |
@@ -49,7 +50,43 @@ AppInsights, the OTel Collector, or the local Aspire dashboard.
 *This is the same rule as "no SDK types outside Infrastructure" — telemetry is
 just its most-violated instance. Write it once. Open: `ILogger`,
 `ActivitySource`, and `Meter` are BCL, not vendor, so the rule permits them
-everywhere — but should they be allowed in `Domain`? That is a conventions row.*
+everywhere — but should they be allowed in `Domain`? That is a conventions row.
+The Tech Lead interrogation answered **no**, on testability and object-graph
+purity grounds rather than the vendor rule — see N-rows in `conventions.md`.*
+
+### Collector-side processing `[position]`
+
+All shaping happens in the **OTel Collector**, not in application code — so the
+app stays vendor-neutral and policy changes without redeploying services.
+
+| Signal | Treatment |
+|---|---|
+| Requests | as-is |
+| Exceptions | as-is |
+| Custom events | as-is |
+| Dependencies | aggregate over N minutes, sample the remainder, record duration anomalies as-is — split per type: SQL, Service Bus, etc. |
+| Traces | aggregate before sampling, archive to Blob |
+
+*Three points for the SA to resolve in ADR 0008:*
+
+1. ***Metric cardinality is a different mechanism from log volume.*** *A `Meter`
+   with a `tenantId` tag creates one time series per tenant per metric per
+   other-tag-combination — a storage and billing multiplier, not a volume one.
+   The Collector can strip the tag, but then per-tenant metrics are gone, which
+   may be wanted for tiering and billing. The decision is **which few metrics
+   keep `tenantId`** — bounded and deliberate — not a blanket setting.*
+2. ***Traces in Blob are write-only unless something can query them.*** *Without
+   a retrieval pipeline it is paying to store data nobody can reach during an
+   incident. **Tail-based sampling** usually gets the same value: keep 100% of
+   traces containing an error or breaching a latency threshold, sample the rest
+   at N%.*
+3. ***Tail sampling constrains the deployment.*** *The Collector must buffer all
+   spans of a trace before deciding, so **every span of a trace must reach the
+   same Collector instance**. With multiple ACA replicas that needs the
+   `loadbalancing` exporter routing by trace ID in front of the sampling tier —
+   a two-tier Collector topology. Decide before ADR 0008 assumes a single tier.*
+4. *Anomaly detection needs a definition — p99 breach, absolute threshold, or
+   both, per dependency type. Currently unspecified.*
 
 ---
 
@@ -193,6 +230,42 @@ are wrong, not that orchestration is missing.* That diagnostic value is part of
 why the rule is worth keeping.
 
 ---
+
+### Result type and pipeline short-circuit `[position]` — mechanism resolved
+
+Human proposed **ErrorOr** (or an equivalent of our own).
+
+*The composition problem, stated precisely, because it is not a library
+problem.* A `IPipelineBehavior<TRequest, TResponse>` short-circuiting on
+validation failure must return `TResponse`, but inside that class `TResponse` is
+an open type parameter — the compiler does not know it is a `Result<something>`,
+so a failed result cannot be constructed. **ErrorOr's implicit conversions do
+not fire on an open generic**, so the wall is identical. Concrete-typing the
+behavior works but the genericity comes from DI registration
+(`typeof(ValidationBehavior<,>)` applied assembly-wide), so per-type behaviors
+would mean one class per slice, hand-maintained.
+
+*Resolution, and it satisfies the no-reflection rule outright — **static
+abstract interface members** (C# 11, available on .NET 10):*
+
+```csharp
+public interface IResultOf<TSelf> {
+    static abstract TSelf FromErrors(IReadOnlyList<Error> errors);
+}
+
+public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    where TResponse : IResultOf<TResponse>
+{
+    // ...
+    if (failures.Count > 0) return TResponse.FromErrors(failures);  // compile-time, no reflection
+}
+```
+
+*Consequence for the library choice: this argues for **hand-rolled** over
+ErrorOr — the constraint interface must be declared on our own type, and ErrorOr
+is a vendor package in Application, colliding with the human's own SDK rule.
+Roughly 60 lines. Record the mechanism in ADR 0009 explicitly, or the first
+implementer reaches for a cast or `Activator.CreateInstance`.*
 
 ### Contract distribution
 
