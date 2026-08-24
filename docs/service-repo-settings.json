@@ -1,0 +1,20 @@
+{
+  "extraKnownMarketplaces": {
+    "solutionbuilder": {
+      "source": {
+        "source": "github",
+        "repo": "Stastrstr/sb-foundry"
+      },
+      "autoUpdate": true
+    }
+  },
+
+  "enabledPlugins": {
+    "sb-team@solutionbuilder": true,
+    "csharp-lsp@claude-plugins-official": true,
+    "microsoft-docs@claude-plugins-official": true,
+    "azure@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "claude-security@claude-plugins-official": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "sb-team",
+  "displayName": "SolutionBuilder Team",
+  "version": "0.1.0",
+  "description": "Solution Architect, Tech Lead, and the standards workflow for our ASP.NET + Azure stack.",
+  "author": {
+    "name": "SolutionBuilder"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["dotnet", "aspnet", "azure", "clean-architecture", "adr", "microservices"]
+}
