@@ -256,6 +256,26 @@ incomplete — loop back to 1.2. Do not proceed to CORE until run 3 is clean.
 - IaC policy test: fail on any connection string carrying a secret
   (Managed Identity only, ADR 0007).
 
+### 1.5b Estate-level invariants — enforcement per-repo CI cannot do
+
+Everything in §1.5 runs inside one repo. The violations that actually destroy a
+microservice estate — a shared database, a shared domain package, a service
+reading another's store — are **invisible from inside a single repo by
+construction**. They need a checker with visibility across all of them.
+
+Runs in `sb-foundry` or `sb-iaac`, on a schedule and on any IaC change, reading
+the IaC, the package graph, and the service catalog. The catalog in `sb-iaac` is
+therefore load-bearing, not documentation — it is this audit's input.
+
+Invariant list and the mechanical/judgement split live in
+`standards/inputs/human-position.md` under *Microservice invariants*. Owner:
+Solution Architect.
+
+**The judgement half cannot be automated**, and it is where a distributed
+monolith actually begins: is a given shared library infrastructure plumbing or
+business logic? That stays a periodic SA review, and the ADR should say so
+rather than implying the CI checks are sufficient.
+
 ### 1.6 Write the skills — last, and small
 
 Only after the reference exists and the drill passes. A skill that **points at**

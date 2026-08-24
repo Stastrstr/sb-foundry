@@ -240,6 +240,48 @@ Open points:
   State that distinction explicitly in the ADR, or one will be cited to justify
   the other.
 
+### Microservice invariants — estate-level audit `[decided]`
+
+We must actively verify we are not drastically violating microservice
+principles — shared databases, shared business logic, and similar.
+
+**The structural point: per-repo CI cannot see these violations.** A service's
+own pipeline has no visibility into another service's connection strings or
+package graph. Every enforcement designed so far lives inside one repo; these
+invariants need a vantage point *above* the repos. The audit therefore runs in
+`sb-foundry` or `sb-iaac`, reading the IaC, the package graph, and the service
+catalog — on a schedule and on any IaC change.
+
+**Mechanically detectable — these become estate CI checks:**
+
+| Invariant | Detected from |
+|---|---|
+| No two services share a logical database or Cosmos container | IaC + App Configuration connection targets |
+| No service reads another service's store directly | connection-target audit against the service catalog |
+| Shared packages are infrastructure plumbing only — never domain types or business rules | package graph: any `SB.*` package referenced by 2+ services must be on an allowlist |
+| Contracts packages contain generated types only | package-content check (see interrogation #38) |
+| A service depends only on another's `.Contracts`, never its internals | package graph |
+| One writer per dataset | service catalog: data-owned field |
+| 1 repo = 1 service, repo name reflects the asset | repo audit against `sb-{asset}-{name}` |
+| No shared schema or migrations across services | migration-project ownership audit |
+
+**Needs judgement — periodic SA review, not CI:**
+
+- *Is this shared library infrastructure plumbing or business logic?* The
+  `SB.Core.Messaging` versus `SB.Contracts` distinction is the slippery one and
+  it is where a distributed monolith actually starts.
+- Are two services really one bounded context split wrongly?
+- Is a given coupling accidental or essential?
+- Synchronous call chains deeper than two (the SA role prompt already refuses
+  these; detecting them needs traces or a call graph).
+
+**Owner:** Solution Architect. **Feeds:** the service catalog in `sb-iaac`,
+which is now load-bearing rather than nice-to-have — it is the audit's input.
+
+*Add to the SA interrogation scope: which of these are worth automating in
+Phase 1a versus deferring, and what the catalog schema needs to contain to make
+the mechanical checks possible.*
+
 ### Service dependency map `[TBA]`
 
 Human wants a dependency map for three purposes: CI version checks, deployment
