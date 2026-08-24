@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "solutionbuilder",
   "description": "Internal agent team and engineering standards for ASP.NET + Azure microservice delivery.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "owner": {
     "name": "SolutionBuilder"
   },
@@ -11,7 +11,7 @@
       "name": "sb-team",
       "source": "./plugins/sb-team",
       "description": "Solution Architect, Tech Lead, and the standards workflow for our ASP.NET + Azure stack.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "SolutionBuilder"
       },

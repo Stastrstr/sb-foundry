@@ -98,6 +98,37 @@ Local marketplaces have auto-update **disabled** by default, so re-run
 `/plugin marketplace update solutionbuilder` after changing plugin contents, then
 `/reload-plugins`.
 
+### Trap: a pinned version hides your edits
+
+`version` is declared in both `plugin.json` and `marketplace.json`. When it is
+set, Claude Code pins the plugin to that string and **only pulls a new copy when
+the string changes**. Editing an agent or skill without bumping the version
+leaves the installed cache stale: `/plugin marketplace update` refreshes the
+*catalog* and reports success, `claude plugin details` reads the catalog and
+shows your new components — but the installed copy under
+`~/.claude/plugins/cache/` still holds the old files, so the agents never load.
+
+The symptom is `Agent type 'x' not found` while `plugin details` cheerfully
+lists it.
+
+While actively developing the plugin, do one of these after every change:
+
+```
+# bump the version in BOTH manifests, then
+claude plugin uninstall sb-team@solutionbuilder
+claude plugin install   sb-team@solutionbuilder --scope user
+```
+
+Then `/reload-plugins` in any running session. A plain `install` over an
+existing install reports `already installed` and does nothing — the uninstall
+is what forces the refresh.
+
+To confirm what actually landed, look at the files rather than the catalog:
+
+```
+find ~/.claude/plugins/cache/solutionbuilder -name "*.md"
+```
+
 ## Verifying
 
 ```
