@@ -17,6 +17,36 @@ the interrogation has something concrete to push against.
 
 ---
 
+## Project intent and non-goals `[decided]`
+
+**The deliverable is the process, not the stack.** The goal is a system that
+consumes an RFP, explores it, works with a Product Owner, and builds a solution
+from the resulting requirements. The stack is deliberately narrow to keep that
+demonstrable — narrowness is a feature, not an oversight.
+
+**Explicit non-goals for the POC.** Do not abstract over these; they are future
+options, deliberately deferred:
+
+- Mongo as an alternative to Cosmos
+- PostgreSQL as an alternative to Azure SQL
+- Any provider-agnostic persistence abstraction
+
+*An agent proposing a repository or provider abstraction "so we can swap the
+database later" is proposing the "we will need this later" generality the Tech
+Lead role prompt already refuses. Cite this section.*
+
+**No cost requirements for the POC.** Cost is being handled in a separate
+dedicated session. Do not let cost drive stack choices now; do record cost
+consequences where they are non-obvious (metric cardinality, Durable Task
+Scheduler, Cosmos RUs) so the later session has them.
+
+**Commercial and licence decisions are deferred, not resolved.** MediatR is
+`[decided]` for the POC — use the existing implementation, do not reimplement
+it. The dual-licence question is revisited **before any production use**, not
+now. Recorded as a revisit trigger in ADR 0014, not as a settled choice.
+
+---
+
 ## Tech Lead scope — inside one service
 
 | Item | Confidence | Lands as |
@@ -25,7 +55,7 @@ the interrogation has something concrete to push against.
 | **No reflection anywhere without strong rationale** | `[decided]` | cross-cutting; constrains ADR 0009 and A8 |
 | FluentValidation for validation | `[position]` | ADR 0012 |
 | Minimal API | `[position]` | conventions I1 |
-| **No SDK interfaces or types anywhere outside Infrastructure.** They live in Infrastructure only, behind our own interface | `[position]` | new ADR |
+| **No I/O SDK types outside Infrastructure** — Cosmos SDK, Redis SDK, Azure SDKs. They live in Infrastructure only, behind our own interface | `[decided]` | new ADR |
 | **Orchestration logic belongs to the Application layer, not Presentation** | `[position]` | new ADR |
 | Telemetry uses native .NET only — see below | `[position]` | same ADR as the SDK rule |
 
@@ -109,6 +139,56 @@ app stays vendor-neutral and policy changes without redeploying services.
 | Files → **Azure Blob** | `[position]` |
 | Health checks — Aspire defaults for now | `[TBA]` |
 | Retries and similar — probably covered by DAPR | `[TBA]` |
+
+### SDK rule — clarified, and it converges with the interrogation
+
+**Human's clarification (2026-08-24):** the rule was always about **I/O SDKs** —
+Cosmos SDK, Redis SDK, Azure clients. Not MediatR, not FluentValidation.
+
+*This is the Tech Lead's proposed Application tier almost exactly. The
+interrogation disagreed with the literal wording, not the intent; the intent was
+enforceable all along. Adopt the three-tier allowlist from
+`interrogation-tech-lead.md` #31 — it now expresses what was meant:*
+
+| Layer | May reference |
+|---|---|
+| Domain | BCL only. Zero `PackageReference` |
+| Application | Pure-CPU, in-memory-testable: mediator abstractions, FluentValidation. **No I/O packages**: Cosmos SDK, Redis, Azure SDKs, Dapr client, `HttpClient` wrappers |
+| Infrastructure / Presentation | Anything |
+
+**Still open — and it is the expensive half: is EF Core an I/O SDK?** By the
+clarified logic it is, which bans it from Application and pushes every read
+query into Infrastructure, making a slice span three projects. The alternative
+keeps EF in Application and treats it as the one carved-out I/O package.
+`IReadDbContext` exposing `IQueryable` was already refused: `ToListAsync`,
+`Include`, and `AsNoTracking` are EF extension methods, so EF re-enters through
+a side door no project-reference test can see. **Decide with ADR 0010, in the
+same sitting.**
+
+Enforced by: CI package-allowlist check per csproj — the same mechanism as #38.
+
+### Outbox store `[decided]`
+
+**The outbox lives in whatever store the service already has. Never introduce a
+store for it.** Standing up SQL purely to hold an outbox table reintroduces the
+dual write the pattern exists to eliminate.
+
+| Service store | Outbox mechanism |
+|---|---|
+| Azure SQL | Outbox table, same transaction as the business write |
+| Cosmos DB | **Explicit event documents in the same container, same partition key**, written in one transactional batch, read off the **change feed** |
+
+*The Cosmos form is stronger than it appears — the change feed is already a
+durable, replayable, per-partition-ordered stream with checkpointing, so it is
+an outbox reader out of the box. Two things must be right: write **explicit
+event documents**, never infer events from state diffs; and put a **TTL** on
+them so they do not accumulate.*
+
+*The Cosmos **partition key is the ordering scope**, which makes it the same
+decision as the Service Bus session key. Decide them together.*
+
+*Verify first: DAPR has a transactional outbox on state stores and Cosmos is a
+supported one. It may collapse most of this into component configuration.*
 
 ### Reliable messaging — the "cannot lose this message" pattern `[TBA]`
 
