@@ -267,6 +267,41 @@ is a vendor package in Application, colliding with the human's own SDK rule.
 Roughly 60 lines. Record the mechanism in ADR 0009 explicitly, or the first
 implementer reaches for a cast or `Activator.CreateInstance`.*
 
+#### Rejected: non-generic marker interface plus a cast
+
+Proposed and worth recording, because it will be proposed again:
+
+```csharp
+public interface IRequestHandlerResult { }          // plain marker
+
+where TResponse : IRequestHandlerResult
+    IRequestHandlerResult failure = new FailureResult(errors);
+    return (TResponse)failure;                       // InvalidCastException at runtime
+```
+
+**Why it fails.** The constraint tells the compiler *what `TResponse` is*; it
+gives no way to *create* one. `FailureResult` is not `Result<Guid>`, so the cast
+compiles and throws at runtime.
+
+**Why it is worse than reflection.** It compiles, it reads as type-safe, and it
+fails on the first validation error of an untested slice — in production.
+Reflection at least fails where you expect it to. The two workarounds seen in
+the wild are `(TResponse)(object)Result<Unit>.From(errors)`, which works for
+exactly one response type, and `typeof(TResponse).GetGenericArguments()`, which
+is the reflection the `[decided]` no-reflection rule forbids.
+
+The generic self-referential marker above is the same design with the flaw
+removed — `static abstract` lets the constraint carry a constructor rather than
+just an identity.
+
+#### Alternative, legitimate if chosen deliberately
+
+Throw a `ValidationException` and map it in middleware. Widely used. The
+trade-off is explicit: validation failures leave the `Result` channel and become
+exception-shaped, so "expected failures are Results" stops being universally
+true. Acceptable as a decision; not acceptable as an accident because the
+generic felt awkward.
+
 ### Contract distribution
 
 | Item | Confidence |
